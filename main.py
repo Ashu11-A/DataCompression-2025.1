@@ -34,7 +34,23 @@ def load_image(path):
     ext = os.path.splitext(path)[1].lower()
     if ext == '.nef':
         with rawpy.imread(path) as raw:
+            """
+            use_camera_wb=True: Aplica o balanço de branco conforme definido pela câmera, o que geralmente é desejável para cores corretas.
+            no_auto_bright=True: Evita ajustes automáticos de brilho, mantendo a imagem mais próxima do original em termos de exposição.
+            output_bps=8: Gera uma imagem RGB com 8 bits por canal de cor.
+            """
             rgb = raw.postprocess(use_camera_wb=True, no_auto_bright=True, output_bps=8)
+            """
+            Converte a imagem RGB de 8 bits para uma imagem em tons de cinza (preto e branco) usando a fórmula de luminância padrão.
+            rgb[..., :3]: Esta parte seleciona os três primeiros canais da imagem rgb. Em uma imagem RGB típica, estes são os canais Vermelho (R), Verde (G) e Azul (B).
+            O ... (ellipsis) significa "todos os eixos anteriores", que neste caso seriam a altura e a largura da imagem.
+            Isso garante que, mesmo que a imagem tenha um quarto canal (como um canal alfa para transparência), apenas os canais R, G e B sejam usados no cálculo.
+            
+            [0.2126, 0.7152, 0.0722]: Estes são os coeficientes (pesos) padrão usados para calcular a luminância de uma imagem a partir de seus componentes RGB. Eles são definidos pela recomendação ITU-R BT.709, que é um padrão para televisão de alta definição (HDTV) e também é comumente usado em computação gráfica.
+              Vermelho (R) é multiplicado por 0.2126.
+              Verde (G) é multiplicado por 0.7152.
+              Azul (B) é multiplicado por 0.0722.
+            """
             gray = np.dot(rgb[..., :3], [0.2126, 0.7152, 0.0722])
             return gray.astype(np.float32)
     else:
@@ -144,6 +160,10 @@ def process_compression_task(task_args):
         comp_size, comp_stream = compress_deflate(base_original_arr, level=level)
         proc_time = time.time() - start_time
         if save_streams_flag:
+            """
+            Este arquivo contém a imagem original (convertida para P&B 8-bit e depois para o formato PNG em memória)
+            que foi então comprimida com zlib.
+            """
             with open(os.path.join(streams_dir, f"image_deflate_level{level}.zlib"), 'wb') as f: f.write(comp_stream)
         result_dict['PSNR (dB)'] = float('inf')
         result_dict['SSIM'] = 1.0
@@ -337,6 +357,11 @@ if __name__ == '__main__':
         dwt_reconstructed_arr, dwt_c_size, dwt_comp_stream = compress_dwt(base_image_arr, wavelet=args.wavelet, level=args.dwt_level, quantization=args.quant)
         time_dwt = time.time() - start_time_dwt
         if args.save_streams:
+            """
+            Este arquivo contém os coeficientes da Transformada Wavelet Discreta (DWT) após a quantização,
+            e então esses coeficientes são comprimidos usando zlib (Deflate).
+            Este é o dado realmente comprimido pelo seu método DWT com perdas.
+            """
             with open(os.path.join(streams_output_dir_single, f"image_dwt_{args.wavelet}_level{args.dwt_level}_quant{args.quant}.dwtz"), 'wb') as f: f.write(dwt_comp_stream)
         psnr_dwt_val = calculate_psnr_metric(base_image_arr, dwt_reconstructed_arr)
         ssim_dwt_val = structural_similarity(base_image_arr.astype(np.float32), dwt_reconstructed_arr.astype(np.float32), data_range=255.0)
