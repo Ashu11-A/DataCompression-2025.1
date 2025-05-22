@@ -176,3 +176,4 @@ cython_debug/
 *.png
 *.nef
 /output_compression
+/output_compression_results
